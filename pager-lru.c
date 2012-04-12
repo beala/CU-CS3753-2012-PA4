@@ -26,6 +26,7 @@ void pageit(Pentry q[MAXPROCESSES]) {
     static int initialized = 0;
     static int tick = 1; // artificial time
     static int timestamps[MAXPROCESSES][MAXPROCPAGES];
+    static int alloc_page_count = 0;
 
     /* Local vars */
     int proctmp;
@@ -33,12 +34,12 @@ void pageit(Pentry q[MAXPROCESSES]) {
 
     /* initialize static vars on first run */
     if(!initialized){
-    for(proctmp=0; proctmp < MAXPROCESSES; proctmp++){
-        for(pagetmp=0; pagetmp < MAXPROCPAGES; pagetmp++){
-        timestamps[proctmp][pagetmp] = 0; 
+        for(proctmp=0; proctmp < MAXPROCESSES; proctmp++){
+            for(pagetmp=0; pagetmp < MAXPROCPAGES; pagetmp++){
+                timestamps[proctmp][pagetmp] = 0;
+            }
         }
-    }
-    initialized = 1;
+        initialized = 1;
     }
 
     /* TODO: Implement LRU Paging */
@@ -47,4 +48,18 @@ void pageit(Pentry q[MAXPROCESSES]) {
 
     /* advance time for next pageit iteration */
     tick++;
+}
+
+int find_lru_page_local(int timestamps[MAXPROCESSES][MAXPROCPAGES],
+                        int proc){
+    int i;
+    int smallest_tick=-1;
+    int lru_page=-1;
+    for(i=0; i<MAXPROCPAGES; ++i){
+        if(timestamps[proc][i] < smallest_tick){
+            smallest_tick = timestamps[proc][i];
+            lru_page = i;
+        }
+    }
+    return lru_page;
 }
