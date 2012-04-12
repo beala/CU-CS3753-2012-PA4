@@ -1,15 +1,14 @@
 /*
  * File: pager-lru.c
+ * Modified by: Alex Beal
+ *              http://usrsb.in
  * Author:       Andy Sayler
  *               http://www.andysayler.com
  * Adopted From: Dr. Alva Couch
  *               http://www.cs.tufts.edu/~couch/
  *
  * Project: CSCI 3753 Programming Assignment 4
- * Create Date: Unknown
- * Modify Date: 2012/04/03
- * Description:
- * 	This file contains an lru pageit
+ *  This file contains an lru pageit
  *      implmentation.
  */
 
@@ -19,7 +18,7 @@
 #include "simulator.h"
 
 void pageit(Pentry q[MAXPROCESSES]) { 
-    
+
     /* This file contains the stub for an LRU pager */
     /* You may need to add/remove/modify any part of this file */
 
@@ -34,18 +33,18 @@ void pageit(Pentry q[MAXPROCESSES]) {
 
     /* initialize static vars on first run */
     if(!initialized){
-	for(proctmp=0; proctmp < MAXPROCESSES; proctmp++){
-	    for(pagetmp=0; pagetmp < MAXPROCPAGES; pagetmp++){
-		timestamps[proctmp][pagetmp] = 0; 
-	    }
-	}
-	initialized = 1;
+    for(proctmp=0; proctmp < MAXPROCESSES; proctmp++){
+        for(pagetmp=0; pagetmp < MAXPROCPAGES; pagetmp++){
+        timestamps[proctmp][pagetmp] = 0; 
+        }
     }
-    
+    initialized = 1;
+    }
+
     /* TODO: Implement LRU Paging */
     fprintf(stderr, "pager-lru not yet implemented. Exiting...\n");
     exit(EXIT_FAILURE);
 
     /* advance time for next pageit iteration */
     tick++;
-} 
+}
