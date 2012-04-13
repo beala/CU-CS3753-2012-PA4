@@ -19,12 +19,6 @@
 
 #include "simulator.h"
 
-enum last_call {
-    IN,
-    OUT,
-    NONE
-};
-
 int find_lru_page_global(int timestamps[MAXPROCESSES][MAXPROCPAGES],
                         Pentry q[MAXPROCESSES],
                         int *lru_proc,
@@ -78,7 +72,6 @@ void pageit(Pentry q[MAXPROCESSES]) {
     int proctmp;
     int pagetmp;
     int lru_page;
-    int lru_proc;
 
     /* initialize static vars on first run */
     if(!initialized){
@@ -114,6 +107,7 @@ void pageit(Pentry q[MAXPROCESSES]) {
             continue;
         /* Try to swap in. If it works, continue */
         if(pagein(proctmp,pagetmp)){
+            /* Proc is not longer waiting on a pageout */
             proc_stat[proctmp]=0;
             continue;
         }
@@ -125,14 +119,16 @@ void pageit(Pentry q[MAXPROCESSES]) {
         /* Proc needs page, but all frames are taken.
          * Get the LRU page, swap it out, and swap in the
          * needed page */
-        if(find_lru_page_global(timestamps, q, &lru_proc, &lru_page)){
-            fprintf(stderr, "ERROR: Cound't find page to evict!\n");
-            exit(EXIT_FAILURE);
+        if(find_lru_page_local(timestamps, q, proctmp, &lru_page)){
+            /* Couldn't find a page to evict. Just wait until some other
+             * proc frees some pages. */
+            continue;
         }
-        if(!pageout(lru_proc, lru_page)){
+        if(!pageout(proctmp, lru_page)){
             fprintf(stderr, "ERROR: Paging out LRU page failed!\n");
             exit(EXIT_FAILURE);
         }
+        /* Signal that this proc is waiting on a pageout */
         proc_stat[proctmp]=1;
     }
 
