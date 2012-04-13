@@ -25,55 +25,42 @@ enum last_call {
     NONE
 };
 
-int pagein_better(int proc, int page, int *proc_page_count, enum last_call status[MAXPROCESSES][MAXPROCPAGES], Pentry q[MAXPROCESSES]){
-    /* It's already swapped in */
-    if(q[proc].pages[page] == 1){
-        return 2;
+int find_lru_page_global(int timestamps[MAXPROCESSES][MAXPROCPAGES],
+                        Pentry q[MAXPROCESSES],
+                        int *lru_proc,
+                        int *lru_page){
+    int proci, pagei;
+    int smallest_tick=INT_MAX;
+    int rc = 1;
+    for(proci=0; proci<MAXPROCESSES; proci++){
+        for(pagei=0; pagei<MAXPROCPAGES; pagei++){
+            if(q[proci].pages[pagei] == 1 &&
+               timestamps[proci][pagei] < smallest_tick){
+                smallest_tick = timestamps[proci][proci];
+                *lru_page = pagei;
+                *lru_proc = proci;
+                rc = 0;
+            }
+        }
     }
-    /* It's already started swapping in */
-    if(status[proc][page] == IN){
-        return 3;
-    }
-    /* Ok, try to swap in. If it works, update
-     * status, etc */
-    if(pagein(proc,page)){
-        status[proc][page]=IN;
-        proc_page_count[proc]++;
-        return 1;
-    }
-    return 0;
-}
-
-int pageout_better(int proc, int page, int proc_page_count[MAXPROCESSES],
-                   enum last_call status[MAXPROCESSES][MAXPROCPAGES],
-                   Pentry q[MAXPROCESSES]){
-    /* It's already swapped out, or is in progress */
-    if(status[proc][page] == OUT || q[proc].pages[page] == -1)
-        return 2;
-    /* Ok, try to swap out. If it works, update
-     * status, etc */
-    if(pageout(proc,page)){
-        printf("Swapping out proc %d page %d\n", proc, page);
-        status[proc][page]=OUT;
-        proc_page_count[proc]--;
-        return 1;
-    }
-    return 0;
+    return rc;
 }
 
 int find_lru_page_local(int timestamps[MAXPROCESSES][MAXPROCPAGES],
+                        Pentry q[MAXPROCESSES],
                         int proc,
-                        Pentry q[MAXPROCESSES]){
-    int i;
+                        int *lru_page){
+    int pagei;
     int smallest_tick=INT_MAX;
-    int lru_page=-1;
-    for(i=0; i<MAXPROCPAGES; ++i){
-        if(q[proc].pages[i] == 1 && timestamps[proc][i] < smallest_tick){
-            smallest_tick = timestamps[proc][i];
-            lru_page = i;
+    int rc = 1;
+    for(pagei=0; pagei<MAXPROCPAGES; pagei++){
+        if(q[proc].pages[pagei] == 1 && timestamps[proc][pagei] < smallest_tick){
+            *lru_page = pagei;
+            smallest_tick = timestamps[proc][pagei];
+            rc = 0;
         }
     }
-    return lru_page;
+    return rc;
 }
 
 void pageit(Pentry q[MAXPROCESSES]) { 
@@ -85,26 +72,21 @@ void pageit(Pentry q[MAXPROCESSES]) {
     static int initialized = 0;
     static int tick = 1; // artificial time
     static int timestamps[MAXPROCESSES][MAXPROCPAGES];
-    static int proc_page_count[MAXPROCESSES];
-    static int per_proc = 5;
-    /*  1 if the most recent call was successful swapin.
-     * -1 if the most recent call was successful swapout.
-     *  0 intial value.*/
-    static enum last_call swapstat[MAXPROCESSES][MAXPROCPAGES];
+    static int proc_stat[MAXPROCESSES];
 
     /* Local vars */
     int proctmp;
     int pagetmp;
     int lru_page;
+    int lru_proc;
 
     /* initialize static vars on first run */
     if(!initialized){
         for(proctmp=0; proctmp < MAXPROCESSES; proctmp++){
             for(pagetmp=0; pagetmp < MAXPROCPAGES; pagetmp++){
                 timestamps[proctmp][pagetmp] = 0;
-                swapstat[proctmp][pagetmp] = NONE;
             }
-            proc_page_count[proctmp] = 0;
+            proc_stat[proctmp] = 0;
         }
         initialized = 1;
     }
@@ -121,10 +103,7 @@ void pageit(Pentry q[MAXPROCESSES]) {
         /* Not active? Swap out pages and skip. */
         if (!q[proctmp].active){
             for(pagetmp=0; pagetmp<MAXPROCPAGES; pagetmp++){
-                if(!pageout_better(proctmp, pagetmp, proc_page_count, swapstat, q)){
-                    fprintf(stderr,"ERROR: Proc dead, but can't swap out page!\n");
-                    exit(EXIT_FAILURE);
-                }
+                pageout(proctmp,pagetmp);
             }
             continue;
         }
@@ -133,38 +112,28 @@ void pageit(Pentry q[MAXPROCESSES]) {
         /* If it's swapped in, skip */
         if(q[proctmp].pages[pagetmp] == 1)
             continue;
-        /* If there are pages available, swap it in
-         * and move onto next proc*/
-        if(proc_page_count[proctmp] < per_proc){
-            if(!pagein_better(proctmp, pagetmp, proc_page_count, swapstat, q)){
-                fprintf(stderr, "ERROR: Page in failed even though there should be empty pages!\n");
-                exit(EXIT_FAILURE);
-            }
+        /* Try to swap in. If it works, continue */
+        if(pagein(proctmp,pagetmp)){
+            proc_stat[proctmp]=0;
             continue;
         }
+        /* Don't pageout if a pageout for this
+         * proc is already in progress. */
+        if(proc_stat[proctmp])
+            continue;
+
         /* Proc needs page, but all frames are taken.
          * Get the LRU page, swap it out, and swap in the
          * needed page */
-        lru_page = find_lru_page_local(timestamps, proctmp, q);
-        if(lru_page < 0){
+        if(find_lru_page_global(timestamps, q, &lru_proc, &lru_page)){
             fprintf(stderr, "ERROR: Cound't find page to evict!\n");
-            int i;
-            //for(i=0; i<MAXPROCPAGES; i++){
-            //    fprintf(stderr, "Page %d. Stat: %ld. Alloc: %d. Proc: %d\n",
-            //            i, q[proctmp].pages[i], proc_page_count[proctmp], proctmp);
-            //    int j;
-            //    for(j=0; j<MAXPROCPAGES; j++)
-            //        fprintf(stderr, "%d ", swapstat[proctmp][j]);
-            //    fprintf(stderr,"\n");
-            //}
-            continue;
             exit(EXIT_FAILURE);
         }
-        //printf("LRU Page: Prog %d Page %d\nAlloc'd: %d\n", proctmp, lru_page, proc_page_count[proctmp]);
-        if(!pageout_better(proctmp, lru_page, proc_page_count, swapstat, q)){
+        if(!pageout(lru_proc, lru_page)){
             fprintf(stderr, "ERROR: Paging out LRU page failed!\n");
             exit(EXIT_FAILURE);
         }
+        proc_stat[proctmp]=1;
     }
 
     /* advance time for next pageit iteration */
