@@ -104,7 +104,7 @@ void print_cfg(int cfg[MAXPROCESSES][MAXPROCPAGES][MAXPROCPAGES]){
     }
 }
 
-int* guess_page(int proc, int cur_pc, int cfg[MAXPROCESSES][MAXPROCPAGES][MAXPROCPAGES]){
+int* pred_page(int proc, int cur_pc, int cfg[MAXPROCESSES][MAXPROCPAGES][MAXPROCPAGES]){
     return cfg[proc][calc_page(cur_pc+100)];
 }
 
@@ -168,6 +168,8 @@ void pageit(Pentry q[MAXPROCESSES]) {
         cur_page = calc_page(q[proctmp].pc);
         if(last_page == cur_page)
             continue;
+        /* While we're at it, page out the last page */
+        pageout(proctmp, last_page);
         insert_cfg(cur_page, proctmp, last_page, cfg);
     }
 
@@ -189,7 +191,6 @@ void pageit(Pentry q[MAXPROCESSES]) {
         }
         /* Calc the next page the proc will need */
         pagetmp = (q[proctmp].pc)/PAGESIZE;
-        print_guess(guess_page(proctmp, q[proctmp].pc, cfg));
         /* If it's swapped in, skip */
         if(q[proctmp].pages[pagetmp] == 1)
             continue;
@@ -218,6 +219,20 @@ void pageit(Pentry q[MAXPROCESSES]) {
         }
         /* Signal that this proc is waiting on a pageout */
         proc_stat[proctmp]=1;
+    }
+
+    for(proctmp=0; proctmp<MAXPROCESSES; proctmp++){
+        int *predictions;
+        int i;
+        if(!q[proctmp].active)
+            continue;
+        /* Guess the pages that the proc will need */
+        predictions = pred_page(proctmp, q[proctmp].pc, cfg);
+        for(i=0; i<MAXPROCPAGES; i++){
+            if(predictions[i] == EMPTY)
+                break;
+            pagein(proctmp, predictions[i]);
+        }
     }
 
     /* advance time for next pageit iteration */
