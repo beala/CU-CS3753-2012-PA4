@@ -1,5 +1,5 @@
 /*
- * File: pager-lru.c
+ * File: pager-predict.c
  * Modified by: Alex Beal
  *              http://usrsb.in
  * Author:       Andy Sayler
@@ -8,7 +8,7 @@
  *               http://www.cs.tufts.edu/~couch/
  *
  * Project: CSCI 3753 Programming Assignment 4
- *  This file contains an lru pageit
+ *  This file contains an predict pageit
  *      implmentation.
  */
 
@@ -57,6 +57,67 @@ int find_lru_page_local(int timestamps[MAXPROCESSES][MAXPROCPAGES],
     return rc;
 }
 
+int calc_page(int pc){
+    return pc/PAGESIZE;
+}
+
+#define EMPTY -1
+
+void init_cfg(int cfg[MAXPROCESSES][MAXPROCPAGES][MAXPROCPAGES]){
+    int i, j, k;
+    for(i=0; i<MAXPROCESSES; i++){
+    for(j=0; j<MAXPROCESSES; j++){
+    for(k=0; k<MAXPROCESSES; k++){
+        cfg[i][j][k] = EMPTY;
+    }
+    }
+    }
+}
+
+void insert_cfg(int cur_page, int proc, int last_page, int cfg[MAXPROCESSES][MAXPROCPAGES][MAXPROCPAGES]){
+    int i;
+    int *slots;
+    slots = cfg[proc][last_page];
+
+    for(i=0; i<MAXPROCPAGES; i++){
+        if(slots[i] == cur_page){
+            break;
+        }
+        if(slots[i] == EMPTY){
+            slots[i] = cur_page;
+            break;
+        }
+    }
+}
+
+void print_cfg(int cfg[MAXPROCESSES][MAXPROCPAGES][MAXPROCPAGES]){
+    int i, j, k;
+    for(i=0; i<MAXPROCESSES; i++){
+        printf("Proc %d:\n", i);
+    for(j=0; j<MAXPROCESSES; j++){
+        printf("Page %d: ", j);
+    for(k=0; k<MAXPROCESSES; k++){
+        printf("%d, ", cfg[i][j][k]);
+    }
+        printf("\n");
+    }
+    }
+}
+
+int* guess_page(int proc, int cur_pc, int cfg[MAXPROCESSES][MAXPROCPAGES][MAXPROCPAGES]){
+    return cfg[proc][calc_page(cur_pc+100)];
+}
+
+void print_guess(int* guesses){
+    int i;
+    for(i=0; i<MAXPROCPAGES; i++){
+        if(guesses[i] == EMPTY)
+            break;
+        printf("%d, ", guesses[i]);
+    }
+    printf("\n");
+}
+
 void pageit(Pentry q[MAXPROCESSES]) { 
 
     /* This file contains the stub for an LRU pager */
@@ -67,14 +128,22 @@ void pageit(Pentry q[MAXPROCESSES]) {
     static int tick = 1; // artificial time
     static int timestamps[MAXPROCESSES][MAXPROCPAGES];
     static int proc_stat[MAXPROCESSES];
+    static int pc_last[MAXPROCESSES];
+
+    /* Each process has a 20 item long array, with each element
+     * pointing to another 20 element array */
+    static int cfg[MAXPROCESSES][MAXPROCPAGES][MAXPROCPAGES];
 
     /* Local vars */
     int proctmp;
     int pagetmp;
     int lru_page;
+    int last_page;
+    int cur_page;
 
     /* initialize static vars on first run */
     if(!initialized){
+        init_cfg(cfg);
         for(proctmp=0; proctmp < MAXPROCESSES; proctmp++){
             for(pagetmp=0; pagetmp < MAXPROCPAGES; pagetmp++){
                 timestamps[proctmp][pagetmp] = 0;
@@ -82,6 +151,24 @@ void pageit(Pentry q[MAXPROCESSES]) {
             proc_stat[proctmp] = 0;
         }
         initialized = 1;
+    }
+
+    /* Update control flow graph */
+    for(proctmp=0; proctmp<MAXPROCESSES; proctmp++){
+        /* Skip if inactive */
+        if(!q[proctmp].active)
+            continue;
+        /* Skip if the last last page is -1 */
+        if(last_page == -1)
+            continue;
+        last_page = calc_page(pc_last[proctmp]);
+        /* Update pc_last */
+        pc_last[proctmp] = q[proctmp].pc;
+        /* Skip if last is same as current */
+        cur_page = calc_page(q[proctmp].pc);
+        if(last_page == cur_page)
+            continue;
+        insert_cfg(cur_page, proctmp, last_page, cfg);
     }
 
     /* Update all the timestamps for active procs */
@@ -102,6 +189,7 @@ void pageit(Pentry q[MAXPROCESSES]) {
         }
         /* Calc the next page the proc will need */
         pagetmp = (q[proctmp].pc)/PAGESIZE;
+        print_guess(guess_page(proctmp, q[proctmp].pc, cfg));
         /* If it's swapped in, skip */
         if(q[proctmp].pages[pagetmp] == 1)
             continue;
