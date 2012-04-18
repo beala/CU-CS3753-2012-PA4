@@ -300,9 +300,7 @@ void pageit(Pentry q[MAXPROCESSES]) {
         predictions = pred_page(proctmp, q[proctmp].pc, cfg);
         page_sort(predictions);
         //print_guess(predictions);
-        for(i=0; i<MAXPROCPAGES; i++){
-            if(predictions[i].page == EMPTY)
-                break;
+        for(i=0; i<page_count(predictions); i++){
             pagein(proctmp, predictions[i].page);
         }
     }
